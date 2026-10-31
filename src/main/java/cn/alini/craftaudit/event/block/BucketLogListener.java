@@ -53,7 +53,7 @@ public class BucketLogListener {
         }
 
         if (fluidId != null) {
-            Database.get().insertAsync(new LogEntry(
+            Database.log(new LogEntry(
                     System.currentTimeMillis(),
                     level.dimension().location().toString(),
                     pos.getX(), pos.getY(), pos.getZ(),
@@ -81,7 +81,7 @@ public class BucketLogListener {
         String fluidId = ForgeRegistries.ITEMS.getKey(held.getItem()).toString();
         BlockPos placePos = event.getPos().relative(event.getFace());
 
-        Database.get().insertAsync(new LogEntry(
+        Database.log(new LogEntry(
                 System.currentTimeMillis(),
                 player.level().dimension().location().toString(),
                 placePos.getX(), placePos.getY(), placePos.getZ(),
@@ -98,7 +98,6 @@ public class BucketLogListener {
         var p = event.getEntity();
         if (!(p instanceof ServerPlayer player)) return;
         if (player.level().isClientSide()) return;
-        if (AuditModeManager.isAuditing(player.getUUID())) return;
         if (event.getHand() != InteractionHand.MAIN_HAND) return;
 
         ItemStack held = player.getMainHandItem();
@@ -109,7 +108,7 @@ public class BucketLogListener {
 
         BlockPos pos = target.blockPosition();
         String entId = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
-        Database.get().insertAsync(new LogEntry(
+        Database.log(new LogEntry(
                 System.currentTimeMillis(),
                 player.level().dimension().location().toString(),
                 pos.getX(), pos.getY(), pos.getZ(),
@@ -126,7 +125,6 @@ public class BucketLogListener {
         var p = event.getEntity();
         if (!(p instanceof ServerPlayer player)) return;
         if (player.level().isClientSide()) return;
-        if (AuditModeManager.isAuditing(player.getUUID())) return;
         if (event.getHand() != InteractionHand.MAIN_HAND) return;
 
         ItemStack held = player.getMainHandItem();
@@ -137,7 +135,7 @@ public class BucketLogListener {
 
         BlockPos pos = target.blockPosition();
         String entId = ForgeRegistries.ENTITY_TYPES.getKey(target.getType()).toString();
-        Database.get().insertAsync(new LogEntry(
+        Database.log(new LogEntry(
                 System.currentTimeMillis(),
                 player.level().dimension().location().toString(),
                 pos.getX(), pos.getY(), pos.getZ(),

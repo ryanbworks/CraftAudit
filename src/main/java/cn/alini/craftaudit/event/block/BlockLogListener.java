@@ -4,12 +4,9 @@ import cn.alini.craftaudit.AuditModeManager;
 import cn.alini.craftaudit.Craftaudit;
 import cn.alini.craftaudit.storage.Database;
 import cn.alini.craftaudit.storage.LogEntry;
-import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.*;
-import net.minecraft.world.level.block.entity.BlockEntity;
-import net.minecraft.world.level.block.entity.SignBlockEntity;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.FlintAndSteelItem;
 import net.minecraft.world.item.ItemStack;
@@ -20,7 +17,6 @@ import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.registries.ForgeRegistries;
 
-import java.util.List;
 
 @Mod.EventBusSubscriber(modid = Craftaudit.MODID)
 public class BlockLogListener {
@@ -29,13 +25,12 @@ public class BlockLogListener {
     public static void onBlockPlaced(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
         if (player.level().isClientSide()) return;
-        if (AuditModeManager.isAuditing(player.getUUID())) return;
 
         BlockState placed = event.getPlacedBlock();
         BlockPos pos = event.getPos();
         String targetId = ForgeRegistries.BLOCKS.getKey(placed.getBlock()).toString();
 
-        Database.get().insertAsync(new LogEntry(
+        Database.log(new LogEntry(
                 System.currentTimeMillis(),
                 player.level().dimension().location().toString(),
                 pos.getX(), pos.getY(), pos.getZ(),
@@ -45,34 +40,6 @@ public class BlockLogListener {
                 targetId,
                 ""
         ));
-    }
-
-    // 告示牌文本修改
-    @SubscribeEvent
-    public static void onSignEdit(PlayerInteractEvent.RightClickBlock event) {
-        var player = event.getEntity();
-        if (player == null || player.level().isClientSide()) return;
-        if (AuditModeManager.isAuditing(player.getUUID())) return;
-
-        var pos = event.getPos();
-        BlockEntity be = player.level().getBlockEntity(pos);
-        if (be instanceof SignBlockEntity sign) {
-            List<Component> frontLines = List.of(sign.getFrontText().getMessages(sign.isWaxed()));
-            List<Component> backLines = List.of(sign.getBackText().getMessages(sign.isWaxed()));
-            String front = frontLines.stream().map(Component::getString).collect(java.util.stream.Collectors.joining(" | "));
-            String back = backLines.stream().map(Component::getString).collect(java.util.stream.Collectors.joining(" | "));
-            String data = "Front: " + front + "; Back: " + back;
-            Database.get().insertAsync(new LogEntry(
-                    System.currentTimeMillis(),
-                    player.level().dimension().location().toString(),
-                    pos.getX(), pos.getY(), pos.getZ(),
-                    player.getName().getString(),
-                    player.getUUID().toString(),
-                    "sign_edit",
-                    ForgeRegistries.BLOCKS.getKey(player.level().getBlockState(pos).getBlock()).toString(),
-                    data
-            ));
-        }
     }
 
     // 使用打火石点燃“状态型”方块（不生成火方块的情况）：营火、蜡烛/蜡烛蛋糕、TNT
@@ -102,7 +69,7 @@ public class BlockLogListener {
         }
 
         if (targetId != null) {
-            Database.get().insertAsync(new LogEntry(
+            Database.log(new LogEntry(
                     System.currentTimeMillis(),
                     level.dimension().location().toString(),
                     pos.getX(), pos.getY(), pos.getZ(),
@@ -120,14 +87,13 @@ public class BlockLogListener {
     public static void onFirePlaced(BlockEvent.EntityPlaceEvent event) {
         if (!(event.getEntity() instanceof net.minecraft.server.level.ServerPlayer player)) return;
         if (player.level().isClientSide()) return;
-        if (AuditModeManager.isAuditing(player.getUUID())) return;
 
         BlockState placed = event.getPlacedBlock();
         Block block = placed.getBlock();
         if (!(block instanceof BaseFireBlock)) return;
 
         BlockPos pos = event.getPos();
-        Database.get().insertAsync(new LogEntry(
+        Database.log(new LogEntry(
                 System.currentTimeMillis(),
                 player.level().dimension().location().toString(),
                 pos.getX(), pos.getY(), pos.getZ(),
@@ -155,7 +121,7 @@ public class BlockLogListener {
         else if (block.getDescriptionId().contains("door")) action = "door_use";
 
         if (action != null) {
-            Database.get().insertAsync(new LogEntry(
+            Database.log(new LogEntry(
                     System.currentTimeMillis(),
                     player.level().dimension().location().toString(),
                     pos.getX(), pos.getY(), pos.getZ(),

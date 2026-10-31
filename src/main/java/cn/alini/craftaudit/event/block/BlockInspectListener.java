@@ -12,35 +12,54 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.network.chat.MutableComponent;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 import net.minecraftforge.event.entity.player.PlayerInteractEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Mod.EventBusSubscriber
 public class BlockInspectListener {
     private static final int PAGE_SIZE = 7;
     private static final int NEAR_PAGE_SIZE = 15; // 半径查询分页大小
 
-    private static final Map<UUID, BlockPos> auditQueryPos = new HashMap<>();
-    private static final Map<UUID, String> auditQueryDim = new HashMap<>();
-    private static final Map<UUID, Long> lastRightClickTime = new HashMap<>();
-    private static final Map<UUID, BlockPos> lastRightClickPos = new HashMap<>();
+    private static final Map<UUID, BlockPos> auditQueryPos = new ConcurrentHashMap<>();
+    private static final Map<UUID, String> auditQueryDim = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> lastRightClickTime = new ConcurrentHashMap<>();
+    private static final Map<UUID, BlockPos> lastRightClickPos = new ConcurrentHashMap<>();
 
     // 新增：左键去重（同一坐标，短时间内只输出一次）
-    private static final Map<UUID, Long> lastLeftClickTime = new HashMap<>();
-    private static final Map<UUID, BlockPos> lastLeftClickPos = new HashMap<>();
+    private static final Map<UUID, Long> lastLeftClickTime = new ConcurrentHashMap<>();
+    private static final Map<UUID, BlockPos> lastLeftClickPos = new ConcurrentHashMap<>();
     // 左键去重窗口：允许同一坐标 4 tick 内只触发一次（可按需调整）
     private static final long LEFT_CLICK_DEDUP_TICKS = 4;
     // 在类里加上这两个常量（可按需调整）
     private static final boolean REPLACE_PAGE = true;  // 开启“替换上一页”模式
     private static final int CLEAR_LINES = 40;         // 清屏的空白行数量
 
+
+    // 玩家下线时清理查询状态，避免长期运行时内存增长
+    @SubscribeEvent
+    public static void onLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        UUID uid = event.getEntity().getUUID();
+        auditQueryPos.remove(uid);
+        auditQueryDim.remove(uid);
+        lastRightClickTime.remove(uid);
+        lastRightClickPos.remove(uid);
+        lastLeftClickTime.remove(uid);
+        lastLeftClickPos.remove(uid);
+    }
+
+    private static boolean requireDb(ServerPlayer player) {
+        if (Database.isConnected()) return true;
+        player.sendSystemMessage(Component.literal("§c数据库未连接。"));
+        return false;
+    }
 
     // 左键：只输出破坏和放置（含自然破坏）
     @SubscribeEvent
@@ -122,6 +141,7 @@ public class BlockInspectListener {
 
     // 左键：只显示破坏、放置、自然破坏
     public static void showBlockLogsPaged(ServerPlayer player, String dimension, int x, int y, int z, int page) {
+        if (!requireDb(player)) return;
         String actionPattern = "break|place|natural_break";
         int total = Database.get().countLogsAt(dimension, x, y, z, actionPattern);
         int totalPages = Math.max((total + PAGE_SIZE - 1) / PAGE_SIZE, 1);
@@ -144,6 +164,7 @@ public class BlockInspectListener {
     // 右键：只显示交互日志（不含破坏和放置）
     // 包含：容器 put/take、告示牌、点火、按钮/拉杆/门、击杀、桶类、展示框/画
     public static void showInteractLogsPaged(ServerPlayer player, String dimension, int x, int y, int z, int page) {
+        if (!requireDb(player)) return;
         String actionPattern = String.join("|", new String[]{
                 "put","take","sign_edit","ignite","button_press","lever_pull","door_use","kill",
                 "bucket_fill","bucket_empty","bucket_catch","bucket_milk",
@@ -171,6 +192,7 @@ public class BlockInspectListener {
 
     // 半径 + 时间分页查询（中心取玩家当前位置）
     public static void showNearbyLogsPaged(ServerPlayer player, int radius, long sinceMillis, int page, String timeLabel) {
+        if (!requireDb(player)) return;
         BlockPos center = player.blockPosition();
         String dim = player.level().dimension().location().toString();
 

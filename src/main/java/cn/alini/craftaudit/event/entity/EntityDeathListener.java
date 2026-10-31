@@ -1,6 +1,5 @@
 package cn.alini.craftaudit.event.entity;
 
-import cn.alini.craftaudit.AuditModeManager;
 import cn.alini.craftaudit.Craftaudit;
 import cn.alini.craftaudit.storage.Database;
 import cn.alini.craftaudit.storage.LogEntry;
@@ -24,7 +23,7 @@ public class EntityDeathListener {
 
         DamageSource source = event.getSource();
         Entity trueSrc = source.getEntity();
-        if (!(trueSrc instanceof ServerPlayer) && trueSrc == null) return; // 仅记录玩家击杀（保持原逻辑）
+        if (trueSrc == null) return; // 只记录有击杀者的死亡（玩家或生物），环境死亡不记录
         Entity directSrc = source.getDirectEntity();
 
         String dim = victim.level().dimension().location().toString();
@@ -35,13 +34,10 @@ public class EntityDeathListener {
         ServerPlayer killerPlayer = null;
         if (trueSrc instanceof ServerPlayer sp) {
             killerPlayer = sp;
-            if (AuditModeManager.isAuditing(sp.getUUID())) return;
             actorName = sp.getName().getString();
             actorUuid = sp.getUUID().toString();
-        } else if (trueSrc != null) {
-            actorName = ForgeRegistries.ENTITY_TYPES.getKey(trueSrc.getType()).toString();
         } else {
-            actorName = "(环境)";
+            actorName = ForgeRegistries.ENTITY_TYPES.getKey(trueSrc.getType()).toString();
         }
 
         String target;
@@ -66,7 +62,7 @@ public class EntityDeathListener {
 
         String dataJson = buildKillDataJson(causeId, projectileId, weaponId, distance);
 
-        Database.get().insertAsync(new LogEntry(
+        Database.log(new LogEntry(
                 System.currentTimeMillis(),
                 dim,
                 pos.getX(), pos.getY(), pos.getZ(),

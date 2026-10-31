@@ -23,7 +23,6 @@ import java.util.*;
 @Mod.EventBusSubscriber(modid = Craftaudit.MODID)
 public class NaturalBreakListener {
     private static final Map<Explosion, ExplosionData> explosionCache = new HashMap<>();
-    private static final Set<String> loggedBlocks = new HashSet<>();
 
     private static String getBlockKey(Level level, BlockPos pos) {
         return level.dimension().location().toString() + "/" + pos.getX() + "/" + pos.getY() + "/" + pos.getZ();
@@ -56,6 +55,10 @@ public class NaturalBreakListener {
     public static void onServerTick(TickEvent.ServerTickEvent event) {
         if (event.phase != TickEvent.Phase.END) return;
 
+        if (explosionCache.isEmpty()) return;
+        // 仅在本 tick 内去重（多个爆炸波及同一方块时只记一次）；原先的全局集合永不清理，
+        // 导致同一坐标第二次被炸时不再记录，且内存持续增长
+        Set<String> loggedBlocks = new HashSet<>();
         Iterator<Map.Entry<Explosion, ExplosionData>> it = explosionCache.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry<Explosion, ExplosionData> entry = it.next();
@@ -79,7 +82,7 @@ public class NaturalBreakListener {
                         ? "unknown"
                         : ForgeRegistries.BLOCKS.getKey(before.getBlock()).toString();
 
-                Database.get().insertAsync(new LogEntry(
+                Database.log(new LogEntry(
                         System.currentTimeMillis(),
                         level.dimension().location().toString(),
                         pos.getX(), pos.getY(), pos.getZ(),
@@ -109,7 +112,7 @@ public class NaturalBreakListener {
                     : "unknown";
             String targetId = ForgeRegistries.BLOCKS.getKey(oldSt.getBlock()).toString();
             BlockPos pos = event.getPos();
-            Database.get().insertAsync(new LogEntry(
+            Database.log(new LogEntry(
                     System.currentTimeMillis(),
                     dim,
                     pos.getX(), pos.getY(), pos.getZ(),
@@ -132,7 +135,7 @@ public class NaturalBreakListener {
         String targetId = ForgeRegistries.BLOCKS.getKey(st.getBlock()).toString();
         BlockPos pos = falling.blockPosition();
 
-        Database.get().insertAsync(new LogEntry(
+        Database.log(new LogEntry(
                 System.currentTimeMillis(),
                 level.dimension().location().toString(),
                 pos.getX(), pos.getY(), pos.getZ(),

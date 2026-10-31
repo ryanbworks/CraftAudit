@@ -1,6 +1,5 @@
 package cn.alini.craftaudit.mixin;
 
-import cn.alini.craftaudit.AuditModeManager;
 import cn.alini.craftaudit.storage.Database;
 import cn.alini.craftaudit.storage.LogEntry;
 import cn.alini.craftaudit.util.NbtCodec;
@@ -21,7 +20,6 @@ public class ServerPlayerGameModeMixin {
     @Inject(method = "destroyBlock", at = @At("HEAD"))
     private void craftaudit$onBlockBreak(BlockPos pos, CallbackInfoReturnable<Boolean> cir) {
         ServerPlayer player = ((ServerPlayerGameModeAccessor)(Object)this).craftaudit$getPlayer();
-        if (AuditModeManager.isAuditing(player.getUUID())) return;
         Level world = player.level();
         BlockState state = world.getBlockState(pos);
         Database db = Database.get();

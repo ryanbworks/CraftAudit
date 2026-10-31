@@ -61,6 +61,12 @@ public final class Database {
     public static Database get() { return INSTANCE; }
     public static boolean isConnected() { return INSTANCE != null; }
 
+    // 数据库未连接时直接丢弃，避免各监听器 NPE
+    public static void log(LogEntry e) {
+        Database db = INSTANCE;
+        if (db != null) db.insertAsync(e);
+    }
+
     public boolean ping() {
         try (Statement st = conn.createStatement()) {
             st.execute("SELECT 1");

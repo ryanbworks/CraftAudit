@@ -37,8 +37,8 @@ public class Craftaudit {
             Database.init(dbPath);
             LOGGER.info("模组数据库初始化完成，路径: " + dbPath);
         } catch (Exception e) {
-            // 禁用模组功能
-            throw new RuntimeException("模组数据库初始化失败，模组功能已禁用", e);
+            // 禁用模组功能：不再抛出异常导致服务器崩溃，未连接时日志写入会被跳过
+            LOGGER.error("模组数据库初始化失败，模组功能已禁用（不会记录任何审计日志！）", e);
         }
         NameLocalization.scanRegistries();
     }

@@ -6,11 +6,19 @@ import net.minecraftforge.common.ForgeConfigSpec;
 import net.minecraftforge.fml.loading.FMLPaths;
 import org.apache.commons.lang3.tuple.Pair;
 
+import com.mojang.logging.LogUtils;
+import org.slf4j.Logger;
+
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 
 public final class Config {
+    private static final Logger LOGGER = LogUtils.getLogger();
     public static final ForgeConfigSpec COMMON_SPEC;
     public static final Common COMMON;
 
@@ -53,19 +61,54 @@ public final class Config {
                 + "?useSSL=" + ssl
                 + "&characterEncoding=utf8"
                 + "&serverTimezone=UTC"
-                + "&rewriteBatchedStatements=true";
-        if (params != null && !params.isBlank()) {
-            return base + "&" + params;
+                + "&rewriteBatchedStatements=true"
+                + "&allowLoadLocalInfile=false"
+                + "&autoDeserialize=false";
+        String safeParams = filterJdbcParams(params);
+        if (!safeParams.isEmpty()) {
+            return base + "&" + safeParams;
         }
         return base;
     }
 
+    // 可读取本地文件、反序列化或加载任意类的 JDBC 参数，禁止通过配置开启
+    private static final Set<String> BLOCKED_JDBC_PARAMS = Set.of(
+            "allowloadlocalinfile", "allowlocalinfile", "allowurlinlocalinfile", "allowloadlocalinfileinpath",
+            "autodeserialize", "queryinterceptors", "statementinterceptors", "exceptioninterceptors",
+            "connectionlifecycleinterceptors", "socketfactory", "propertiestransform",
+            "authenticationplugins", "defaultauthenticationplugin", "clientinfoprovider"
+    );
+
+    static String filterJdbcParams(String params) {
+        if (params == null || params.isBlank()) return "";
+        List<String> kept = new ArrayList<>();
+        for (String pair : params.split("&")) {
+            if (pair.isBlank()) continue;
+            String key = pair.split("=", 2)[0].trim().toLowerCase(Locale.ROOT);
+            if (BLOCKED_JDBC_PARAMS.contains(key)) {
+                LOGGER.warn("[craftaudit] 已忽略不安全的 JDBC 参数: {}", key);
+                continue;
+            }
+            kept.add(pair.trim());
+        }
+        return String.join("&", kept);
+    }
+
     public static String mysqlUser() { return COMMON.mysqlUser.get(); }
-    public static String mysqlPassword() { return COMMON.mysqlPassword.get(); }
+
+    // 优先读取环境变量，避免在配置文件中明文保存密码
+    public static String mysqlPassword() {
+        String env = System.getenv(MYSQL_PASSWORD_ENV);
+        if (env != null && !env.isEmpty()) return env;
+        return COMMON.mysqlPassword.get();
+    }
+
+    public static final String MYSQL_PASSWORD_ENV = "CRAFTAUDIT_MYSQL_PASSWORD";
 
     public static final class Common {
         public final ForgeConfigSpec.EnumValue<DbMode> dbMode;
         public final ForgeConfigSpec.BooleanValue auditRequirePermission;
+        public final ForgeConfigSpec.BooleanValue nearRequirePermission;
 
         // SQLite
         public final ForgeConfigSpec.ConfigValue<String> sqlitePath;
@@ -98,14 +141,19 @@ public final class Config {
             mysqlPort = builder.defineInRange("port", 3306, 1, 65535);
             mysqlDatabase = builder.define("database", "craftaudit");
             mysqlUser = builder.define("user", "root");
-            mysqlPassword = builder.comment("注意: 明文存储，请谨慎使用公共环境").define("password", "");
+            mysqlPassword = builder.comment("注意: 明文存储，请谨慎使用公共环境。设置环境变量 " + MYSQL_PASSWORD_ENV + " 时优先使用环境变量")
+                    .define("password", "");
             mysqlUseSSL = builder.define("useSSL", false);
-            mysqlParams = builder.comment("附加 JDBC 参数，形如 `allowPublicKeyRetrieval=true`").define("params", "");
+            mysqlParams = builder.comment("附加 JDBC 参数，形如 `allowPublicKeyRetrieval=true`（不安全的参数如 allowLoadLocalInfile、autoDeserialize 会被忽略）")
+                    .define("params", "");
             builder.pop();
             builder.push("audit");
             auditRequirePermission = builder
-                    .comment("审计模式命令是否需要权限，包含ca i审计模式以及ca near范围查询")
+                    .comment("审计模式命令是否需要权限，包含 ca i 审计模式、ca log、ca blocklog")
                     .define("requirePermission", true);
+            nearRequirePermission = builder
+                    .comment("ca near 范围查询是否需要权限（可暴露他人坐标，建议保持 true）")
+                    .define("nearRequirePermission", true);
             builder.pop();
 
             builder.pop();

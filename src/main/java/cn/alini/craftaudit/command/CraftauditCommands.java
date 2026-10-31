@@ -43,6 +43,7 @@ public final class CraftauditCommands {
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         // ca inspect 切换审计模式的权限
         boolean requirePerm = Config.COMMON.auditRequirePermission.get();
+        boolean nearRequirePerm = Config.COMMON.nearRequirePermission.get();
         CommandDispatcher<CommandSourceStack> d = event.getDispatcher();
 
         // /craftaudit ...
@@ -95,7 +96,7 @@ public final class CraftauditCommands {
                         )
                 )
                 .then(Commands.literal("near")
-                        .requires(src -> !requirePerm || src.hasPermission(2))
+                        .requires(src -> !nearRequirePerm || src.hasPermission(2))
                         .then(Commands.argument("radius", IntegerArgumentType.integer(1, 256))
                                 .then(Commands.argument("time", StringArgumentType.word())
                                         .executes(ctx -> near(
@@ -244,7 +245,7 @@ public final class CraftauditCommands {
                         )
                 )
                 .then(Commands.literal("near")
-                        .requires(src -> !requirePerm || src.hasPermission(2))
+                        .requires(src -> !nearRequirePerm || src.hasPermission(2))
                         .then(Commands.argument("radius", IntegerArgumentType.integer(1, 256))
                                 .then(Commands.argument("time", StringArgumentType.word())
                                         .executes(ctx -> near(
@@ -503,6 +504,7 @@ public final class CraftauditCommands {
     }
 
     private static int inspectAudit(CommandSourceStack src, int page) {
+        if (!requireDb(src)) return 0;
         var player = src.getPlayer();
         if (player == null) {
             src.sendFailure(Component.literal("§c[CraftAudit] 只能由玩家使用该命令！"));
@@ -518,6 +520,7 @@ public final class CraftauditCommands {
     }
 
     private static int inspectBlockAudit(CommandSourceStack src, int page) {
+        if (!requireDb(src)) return 0;
         var player = src.getPlayer();
         if (player == null) {
             src.sendFailure(Component.literal("§c[CraftAudit] 只能由玩家使用该命令！"));
@@ -534,6 +537,7 @@ public final class CraftauditCommands {
 
     // near
     private static int near(CommandSourceStack src, int radius, String timeStr, int page) {
+        if (!requireDb(src)) return 0;
         var player = src.getPlayer();
         if (player == null) {
             src.sendFailure(Component.literal("§c[CraftAudit] 只能由玩家使用该命令！"));
@@ -551,6 +555,7 @@ public final class CraftauditCommands {
 
     // rollback（带撤销快照）
     private static int rollback(CommandSourceStack src, String playerName, String timeStr, int radius) {
+        if (!requireDb(src)) return 0;
         var executor = src.getPlayer();
         if (executor == null) {
             src.sendFailure(Component.literal("§c[CraftAudit] 只能由玩家使用该命令！"));
@@ -574,6 +579,7 @@ public final class CraftauditCommands {
 
     // restore（带撤销快照）
     private static int restore(CommandSourceStack src, String timeStr, int radius, String typeOpt) {
+        if (!requireDb(src)) return 0;
         var executor = src.getPlayer();
         if (executor == null) {
             src.sendFailure(Component.literal("§c[CraftAudit] 只能由玩家使用该命令！"));
@@ -672,20 +678,32 @@ public final class CraftauditCommands {
         return changed > 0 ? 1 : 0;
     }
 
+    private static boolean requireDb(CommandSourceStack src) {
+        if (Database.isConnected()) return true;
+        src.sendFailure(Component.literal("§c数据库未连接。"));
+        return false;
+    }
+
     // parse duration
     private static final Pattern DURATION_PATTERN = Pattern.compile("^(\\d+)([smhdSMHD])$");
     private static long parseDurationMillis(String s) {
         if (s == null) return -1L;
         Matcher m = DURATION_PATTERN.matcher(s.trim());
         if (!m.matches()) return -1L;
-        long val = Long.parseLong(m.group(1));
         char unit = Character.toLowerCase(m.group(2).charAt(0));
-        return switch (unit) {
-            case 's' -> val * 1000L;
-            case 'm' -> val * 60_000L;
-            case 'h' -> val * 3_600_000L;
-            case 'd' -> val * 86_400_000L;
+        long factor = switch (unit) {
+            case 's' -> 1000L;
+            case 'm' -> 60_000L;
+            case 'h' -> 3_600_000L;
+            case 'd' -> 86_400_000L;
             default -> -1L;
         };
+        if (factor < 0) return -1L;
+        // 数字过大时 parseLong / 乘法会溢出，按无效处理
+        try {
+            return Math.multiplyExact(Long.parseLong(m.group(1)), factor);
+        } catch (NumberFormatException | ArithmeticException e) {
+            return -1L;
+        }
     }
 }

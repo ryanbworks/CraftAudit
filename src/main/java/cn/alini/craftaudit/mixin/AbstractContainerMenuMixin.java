@@ -43,7 +43,7 @@ public class AbstractContainerMenuMixin {
             String action = delta > 0 ? "put" : "take";
             int absCount = Math.abs(delta);
 
-            Database.get().insertAsync(new LogEntry(
+            Database.log(new LogEntry(
                     System.currentTimeMillis(),
                     dim,
                     bp.getX(), bp.getY(), bp.getZ(),
