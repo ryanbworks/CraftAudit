@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= typeof title !== 'undefined' ? title + ' · ' : '' %>CraftAudit</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<% if (user) { %>
+<header class="top">
+  <a class="brand" href="/">CraftAudit</a>
+  <nav>
+    <a href="/logs">Logs</a>
+    <a href="/items">Itens</a>
+    <a href="/cases">Casos</a>
+  </nav>
+  <form method="post" action="/logout" class="logout">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <span class="muted"><%= user.username %> (<%= user.role %>)</span>
+    <button class="link">Sair</button>
+  </form>
+</header>
+<% } %>
+<main>

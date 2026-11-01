@@ -1,0 +1,22 @@
+<%- include('partials/header', { title: 'Início' }) %>
+<div class="stats">
+  <div class="card stat"><span class="num"><%= stats.logs24h.toLocaleString('pt-BR') %></span><span class="muted">registros nas últimas 24h</span></div>
+  <div class="card stat"><span class="num"><%= stats.openCases %></span><span class="muted">casos abertos</span></div>
+  <div class="card stat"><span class="num"><%= stats.closedCases %></span><span class="muted">casos encerrados</span></div>
+</div>
+
+<section class="card">
+  <h2>Casos abertos</h2>
+  <% if (!cases.length) { %><p class="muted">Nenhum caso aberto.</p><% } else { %>
+  <table>
+    <thead><tr><th>Nº</th><th>Título</th><th>Envolvidos</th><th>Evidências</th><th>Criado</th></tr></thead>
+    <tbody>
+    <% for (const c of cases) { %>
+      <tr><td><a href="/cases/<%= c.id %>"><%= caseNo(c.id) %></a></td><td><%= c.title %></td>
+        <td><%= c.player_count %></td><td><%= c.evidence_count %></td><td><%= fmtTime(c.created_ms) %></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+  <% } %>
+</section>
+<%- include('partials/footer') %>

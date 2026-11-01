@@ -1,0 +1,117 @@
+<%- include('partials/header', { title: caseNo(c.id) }) %>
+<% const open = c.status === 'open'; const admin = user.role === 'admin'; const editable = open && admin; %>
+<% const csrfField = '<input type="hidden" name="_csrf" value="' + csrf + '">'; %>
+
+<section class="card">
+  <div class="row">
+    <h1><%= caseNo(c.id) %> — <%= c.title %></h1>
+    <span class="badge <%= c.status %>"><%= open ? 'Aberto' : 'Encerrado' %></span>
+  </div>
+  <p class="muted">Criado por <%= c.created_by %> em <%= fmtTime(c.created_ms) %></p>
+  <% if (!open) { %>
+    <div class="conclusion">
+      <strong>Conclusão</strong> (<%= c.closed_by %>, <%= fmtTime(c.closed_ms) %>)
+      <p><%= c.conclusion %></p>
+    </div>
+    <% if (admin) { %>
+    <form method="post" action="/cases/<%= c.id %>/reopen"><%- csrfField %><button class="secondary">Reabrir caso</button></form>
+    <% } %>
+  <% } %>
+  <% if (editable) { %>
+  <form method="post" action="/cases/<%= c.id %>/rename" class="inline">
+    <%- csrfField %><input name="title" value="<%= c.title %>" maxlength="100" required><button class="secondary">Renomear</button>
+  </form>
+  <% } %>
+</section>
+
+<div class="grid2">
+  <section class="card">
+    <h2>Envolvidos</h2>
+    <% if (!c.players.length) { %><p class="muted">Nenhum jogador marcado.</p><% } %>
+    <ul class="plain">
+    <% for (const p of c.players) { %>
+      <li>
+        <span class="badge role-<%= p.role %>"><%= roleName(p.role) %></span>
+        <span title="<%= p.uuid || 'UUID desconhecido' %>"><%= p.player %></span>
+        <% if (editable) { %>
+        <form method="post" action="/cases/<%= c.id %>/player/remove" class="inline-tight">
+          <%- csrfField %><input type="hidden" name="player" value="<%= p.player %>"><button class="link danger">remover</button>
+        </form>
+        <% } %>
+      </li>
+    <% } %>
+    </ul>
+    <% if (editable) { %>
+    <form method="post" action="/cases/<%= c.id %>/player" class="inline">
+      <%- csrfField %>
+      <input name="player" placeholder="Jogador ou UUID" required>
+      <select name="role"><% for (const r of roles) { %><option value="<%= r %>"><%= roleName(r) %></option><% } %></select>
+      <button class="secondary">Adicionar</button>
+    </form>
+    <% } %>
+  </section>
+
+  <section class="card">
+    <h2>Locais</h2>
+    <% if (!c.locations.length) { %><p class="muted">Nenhum local registrado.</p><% } %>
+    <ul class="plain">
+    <% for (const l of c.locations) { %>
+      <li><strong><%= l.text %></strong> <code><%= l.dimension %> <%= l.x %>/<%= l.y %>/<%= l.z %></code>
+        <div class="detail">/execute in <%= l.dimension %> run tp @s <%= l.x %> <%= l.y %> <%= l.z %></div></li>
+    <% } %>
+    </ul>
+    <% if (editable) { %>
+    <form method="post" action="/cases/<%= c.id %>/location" class="inline">
+      <%- csrfField %>
+      <input name="label" placeholder="Descrição">
+      <input name="dimension" value="minecraft:overworld" required>
+      <input name="x" type="number" placeholder="X" required class="num">
+      <input name="y" type="number" placeholder="Y" required class="num">
+      <input name="z" type="number" placeholder="Z" required class="num">
+      <button class="secondary">Adicionar</button>
+    </form>
+    <% } %>
+  </section>
+</div>
+
+<section class="card">
+  <h2>Linha do tempo</h2>
+  <ul class="timeline">
+  <% for (const e of c.timeline) { %>
+    <li class="t-<%= e.type %>">
+      <span class="muted nowrap"><%= fmtTime(e.time_ms) %></span> <strong><%= e.author %></strong>
+      <% if (e.type === 'note') { %> — <%= e.text %>
+      <% } else if (e.type === 'location') { %> — 📍 <%= e.text %> <code><%= e.dimension %> <%= e.x %>/<%= e.y %>/<%= e.z %></code>
+      <% } else { %> — <em><%= renderEvent(e) %></em><% } %>
+    </li>
+  <% } %>
+  </ul>
+  <% if (editable) { %>
+  <form method="post" action="/cases/<%= c.id %>/note" class="inline">
+    <%- csrfField %><input name="text" placeholder="Nova anotação" required class="grow"><button class="secondary">Anotar</button>
+  </form>
+  <% } %>
+</section>
+
+<section class="card" id="evidence">
+  <h2>Evidências (<%= c.evidence.length %>)</h2>
+  <% if (editable) { %><p class="muted hint">Para anexar, faça uma busca em <a href="/logs">Logs</a> e use "Anexar estes resultados".</p><% } %>
+  <%
+    // evidências guardam uma cópia do log no campo data (mesmo formato do mod)
+    const logs = c.evidence.map((e) => { try { const d = JSON.parse(e.data); return { ...d, time_ms: d.time }; } catch { return null; } }).filter(Boolean);
+  %>
+  <%- include('partials/logtable', { logs }) %>
+</section>
+
+<% if (editable) { %>
+<section class="card">
+  <h2>Encerrar caso</h2>
+  <form method="post" action="/cases/<%= c.id %>/close">
+    <%- csrfField %>
+    <textarea name="conclusion" rows="3" placeholder="Conclusão do administrador (ex.: Culpado: Steve. Itens devolvidos, ban de 3 dias.)" required></textarea>
+    <button class="danger">Encerrar caso</button>
+  </form>
+  <p class="muted hint">Depois de encerrado, o caso fica somente leitura até ser reaberto (a reabertura também é registrada).</p>
+</section>
+<% } %>
+<%- include('partials/footer') %>

@@ -1,0 +1,7 @@
+<% if (pages > 1) { %>
+<nav class="pager">
+  <% if (page > 1) { %><a href="<%= link(page - 1) %>">← Anterior</a><% } %>
+  <span>Página <%= page %> de <%= pages %></span>
+  <% if (page < pages) { %><a href="<%= link(page + 1) %>">Próxima →</a><% } %>
+</nav>
+<% } %>

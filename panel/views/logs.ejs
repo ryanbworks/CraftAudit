@@ -1,0 +1,42 @@
+<%- include('partials/header', { title: 'Logs' }) %>
+<% const v = (k) => query[k] || ''; %>
+<form method="get" class="card filters">
+  <label>Jogador (nome ou UUID) <input name="player" value="<%= v('player') %>"></label>
+  <label>Ação
+    <select name="action"><option value="">Todas</option>
+      <% for (const a of actions) { %><option value="<%= a %>" <%= v('action') === a ? 'selected' : '' %>><%= tr('craftaudit.action.' + a) %> (<%= a %>)</option><% } %>
+    </select>
+  </label>
+  <label>Item (ID) <input name="item" value="<%= v('item') %>" placeholder="minecraft:diamond"></label>
+  <label>Dimensão
+    <select name="dim"><option value="">Todas</option>
+      <% for (const d of dims) { %><option <%= v('dim') === d ? 'selected' : '' %>><%= d %></option><% } %>
+    </select>
+  </label>
+  <label>X <input name="x" type="number" value="<%= v('x') %>"></label>
+  <label>Y <input name="y" type="number" value="<%= v('y') %>"></label>
+  <label>Z <input name="z" type="number" value="<%= v('z') %>"></label>
+  <label>Raio <input name="r" type="number" min="1" max="256" value="<%= v('r') %>" placeholder="10"></label>
+  <label>De <input name="from" type="datetime-local" value="<%= v('from') %>"></label>
+  <label>Até <input name="to" type="datetime-local" value="<%= v('to') %>"></label>
+  <button>Buscar</button>
+  <p class="muted hint">Sem período definido, mostra as últimas 24h.</p>
+</form>
+
+<section class="card">
+  <h2><%= total.toLocaleString('pt-BR') %> registros</h2>
+  <% if (user.role === 'admin' && openCases.length && total) { %>
+  <form method="post" action="/attach" class="inline attach">
+    <input type="hidden" name="_csrf" value="<%= csrf %>">
+    <% for (const k of ['player','action','item','dim','x','y','z','r','from','to']) { %><input type="hidden" name="<%= k %>" value="<%= v(k) %>"><% } %>
+    Anexar estes resultados (até <%= attachLimit %>) ao caso
+    <select name="case" required>
+      <% for (const c of openCases) { %><option value="<%= c.id %>"><%= caseNo(c.id) %> — <%= c.title %></option><% } %>
+    </select>
+    <button>Anexar</button>
+  </form>
+  <% } %>
+  <%- include('partials/logtable', { logs: rows }) %>
+  <%- include('partials/pager') %>
+</section>
+<%- include('partials/footer') %>

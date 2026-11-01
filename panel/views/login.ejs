@@ -1,0 +1,10 @@
+<%- include('partials/header', { title: 'Entrar' }) %>
+<form method="post" action="/login" class="card login">
+  <h1>CraftAudit</h1>
+  <input type="hidden" name="_csrf" value="<%= csrf %>">
+  <% if (error) { %><p class="error"><%= error %></p><% } %>
+  <label>Usuário <input name="username" autocomplete="username" required autofocus></label>
+  <label>Senha <input name="password" type="password" autocomplete="current-password" required></label>
+  <button>Entrar</button>
+</form>
+<%- include('partials/footer') %>

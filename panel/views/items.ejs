@@ -1,0 +1,34 @@
+<%- include('partials/header', { title: 'Itens' }) %>
+<% const v = (k) => query[k] || ''; %>
+<form method="get" class="card filters">
+  <label>Item (ID) <input name="item" value="<%= item %>" placeholder="minecraft:diamond" required></label>
+  <label>Jogador (opcional) <input name="player" value="<%= v('player') %>"></label>
+  <label>De <input name="from" type="datetime-local" value="<%= v('from') %>"></label>
+  <label>Até <input name="to" type="datetime-local" value="<%= v('to') %>"></label>
+  <button>Rastrear</button>
+  <p class="muted hint">Considera baús/contêineres, itens jogados e itens pegados de outros jogadores. Sem período, últimas 24h.</p>
+</form>
+
+<% if (result) { %>
+<section class="card">
+  <h2>Resumo por jogador — <code><%= item %></code></h2>
+  <% if (result.truncated) { %><p class="warn">Mais de <%= itemLimit %> registros: o resumo considera só os mais recentes. Reduza o período.</p><% } %>
+  <% if (!result.summary.length) { %><p class="muted">Nenhuma movimentação.</p><% } else { %>
+  <table>
+    <thead><tr><th>Jogador</th><th>Tirou</th><th>Colocou</th><th>Pegou</th><th>Jogou</th><th>Saldo</th></tr></thead>
+    <tbody>
+    <% for (const s of result.summary) { %>
+      <tr><td><%= s.player %></td><td><%= s.take %></td><td><%= s.put %></td><td><%= s.transfer %></td><td><%= s.drop %></td>
+        <td class="<%= s.net > 0 ? 'pos' : s.net < 0 ? 'neg' : '' %>"><%= s.net > 0 ? '+' : '' %><%= s.net %></td></tr>
+    <% } %>
+    </tbody>
+  </table>
+  <% } %>
+</section>
+<section class="card">
+  <h2>Movimentações (<%= result.rows.length %>)</h2>
+  <%- include('partials/logtable', { logs: rows }) %>
+  <%- include('partials/pager') %>
+</section>
+<% } %>
+<%- include('partials/footer') %>

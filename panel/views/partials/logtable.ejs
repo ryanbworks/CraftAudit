@@ -1,0 +1,23 @@
+<% if (!logs.length) { %>
+<p class="muted">Nenhum registro.</p>
+<% } else { %>
+<div class="scroll">
+<table class="logs">
+  <thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Alvo</th><th>Onde</th></tr></thead>
+  <tbody>
+  <% for (const raw of logs) { const l = describeLog(raw); %>
+    <tr>
+      <td class="nowrap"><%= l.time %></td>
+      <td title="<%= l.uuid || '' %>"><%= l.actor %></td>
+      <td><span class="tag tag-<%= l.action %>"><%= l.actionText %></span></td>
+      <td>
+        <% if (l.item) { %><strong><%= l.item.count %>x</strong> <code><%= l.item.id %></code><% } else { %><code><%= l.target %></code><% } %>
+        <% for (const d of l.details) { %><div class="detail"><%= d %></div><% } %>
+      </td>
+      <td class="nowrap"><code><%= l.where %></code></td>
+    </tr>
+  <% } %>
+  </tbody>
+</table>
+</div>
+<% } %>
