@@ -122,6 +122,10 @@ public final class Config {
         public final ForgeConfigSpec.BooleanValue mysqlUseSSL;
         public final ForgeConfigSpec.ConfigValue<String> mysqlParams;
 
+        // 语言
+        public final ForgeConfigSpec.ConfigValue<String> language;
+        public final ForgeConfigSpec.BooleanValue languagePerPlayer;
+
         private Common(ForgeConfigSpec.Builder builder) {
             builder.push("database");
 
@@ -156,6 +160,16 @@ public final class Config {
                     .define("nearRequirePermission", true);
             builder.pop();
 
+            builder.pop();
+
+            builder.push("language");
+            language = builder
+                    .comment("默认语言（控制台、以及客户端语言没有对应翻译时使用）。内置: zh_cn, en_us, pt_br",
+                            "可在 <游戏目录>/craftaudit/lang/<语言>.json 中覆盖翻译或添加新语言，/ca reloadlang 重新加载")
+                    .define("default", "zh_cn");
+            languagePerPlayer = builder
+                    .comment("按玩家客户端语言显示消息（有对应翻译时）")
+                    .define("perPlayer", true);
             builder.pop();
         }
     }

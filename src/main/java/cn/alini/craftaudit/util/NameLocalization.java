@@ -1,49 +1,44 @@
 package cn.alini.craftaudit.util;
 
-import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.Block;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.MutableComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.registries.ForgeRegistries;
 
-import java.util.HashMap;
-import java.util.Map;
-
 /**
- * 自动注册表扫描，支持原版+模组物品方块本地化名美化
+ * 物品 / 方块 / 实体名称：返回可翻译组件，由玩家客户端按自己的语言显示（原版及客户端已安装的模组）。
+ * 未注册的 ID（如已卸载模组）原样显示。
  */
-public class NameLocalization {
-    private static final Map<String, String> ITEM_MAP = new HashMap<>();
-    private static final Map<String, String> BLOCK_MAP = new HashMap<>();
+public final class NameLocalization {
 
-    public static void scanRegistries() {
-        // 扫描所有物品
-        for (Item item : ForgeRegistries.ITEMS.getValues()) {
-            String id = ForgeRegistries.ITEMS.getKey(item).toString(); // 例如 minecraft:diamond
-            // 物品本地名
-            String name = item.getName(ItemStack.EMPTY).getString(); // FIX: 应为 ItemStack.EMPTY
-            ITEM_MAP.put(id, name);
+    private NameLocalization() {}
+
+    public static MutableComponent item(String id) {
+        ResourceLocation rl = ResourceLocation.tryParse(id);
+        if (rl != null && ForgeRegistries.ITEMS.containsKey(rl)) {
+            return Component.translatable(ForgeRegistries.ITEMS.getValue(rl).getDescriptionId());
         }
-        // 扫描所有方块
-        for (Block block : ForgeRegistries.BLOCKS.getValues()) {
-            String id = ForgeRegistries.BLOCKS.getKey(block).toString();
-            String name = block.getName().getString();
-            BLOCK_MAP.put(id, name);
+        return Component.literal(String.valueOf(id));
+    }
+
+    public static MutableComponent block(String id) {
+        ResourceLocation rl = ResourceLocation.tryParse(id);
+        if (rl != null && ForgeRegistries.BLOCKS.containsKey(rl)) {
+            return Component.translatable(ForgeRegistries.BLOCKS.getValue(rl).getDescriptionId());
         }
+        return Component.literal(String.valueOf(id));
     }
 
-    public static String itemName(String id) {
-        return ITEM_MAP.getOrDefault(id, id);
-    }
-
-    public static String blockName(String id) {
-        return BLOCK_MAP.getOrDefault(id, id);
-    }
-
-    public static String localize(String id) {
-        String v = ITEM_MAP.get(id);
-        if (v != null) return v;
-        v = BLOCK_MAP.get(id);
-        if (v != null) return v;
-        return id;
+    // 依次尝试 物品 → 方块 → 实体（击杀目标、桶装生物、流体方块等）
+    public static MutableComponent any(String id) {
+        ResourceLocation rl = ResourceLocation.tryParse(id);
+        if (rl != null) {
+            if (ForgeRegistries.ITEMS.containsKey(rl)) return item(id);
+            if (ForgeRegistries.BLOCKS.containsKey(rl)) return block(id);
+            if (ForgeRegistries.ENTITY_TYPES.containsKey(rl)) {
+                return Component.translatable(ForgeRegistries.ENTITY_TYPES.getValue(rl).getDescriptionId());
+            }
+        }
+        return Component.literal(String.valueOf(id));
     }
 }

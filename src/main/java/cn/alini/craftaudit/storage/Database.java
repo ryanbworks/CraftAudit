@@ -1,6 +1,7 @@
 package cn.alini.craftaudit.storage;
 
 import cn.alini.craftaudit.config.Config;
+import cn.alini.craftaudit.util.ItemData;
 import com.mojang.logging.LogUtils;
 import org.slf4j.Logger;
 
@@ -8,6 +9,9 @@ import java.nio.file.Path;
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.io.IOException;
@@ -28,10 +32,14 @@ public final class Database {
         return t;
     });
 
+    // 这些动作的 data 中带 item 字段，写入时同步到 item 列以便按物品索引查询
+    private static final Set<String> ITEM_ACTIONS = Set.of("put", "take", "drop", "transfer");
+
     private Database(Connection conn, Dialect dialect) throws SQLException {
         this.conn = conn;
         this.dialect = dialect;
         ensureSchema();
+        writer.execute(this::backfillItemColumn);
     }
 
     public static synchronized void init(Path sqliteDefaultPath) throws SQLException {
@@ -90,13 +98,16 @@ public final class Database {
                       uuid TEXT,
                       action TEXT NOT NULL,
                       target TEXT,
-                      data TEXT
+                      data TEXT,
+                      item TEXT
                     )
                 """);
                 st.execute("CREATE INDEX IF NOT EXISTS idx_logs_pos ON logs(dimension, x, y, z)");
                 st.execute("CREATE INDEX IF NOT EXISTS idx_logs_time ON logs(time_ms)");
                 // 兼容老表：尝试补列
                 tryExec(st, "ALTER TABLE logs ADD COLUMN uuid TEXT");
+                tryExec(st, "ALTER TABLE logs ADD COLUMN item TEXT");
+                st.execute("CREATE INDEX IF NOT EXISTS idx_logs_item ON logs(item, time_ms)");
             } else {
                 st.execute("""
                     CREATE TABLE IF NOT EXISTS logs(
@@ -108,25 +119,44 @@ public final class Database {
                       uuid VARCHAR(36),
                       action VARCHAR(32) NOT NULL,
                       target VARCHAR(191),
-                      data TEXT
+                      data TEXT,
+                      item VARCHAR(191)
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
                 """);
                 tryExec(st, "CREATE INDEX idx_logs_pos ON logs(dimension, x, y, z)");
                 tryExec(st, "CREATE INDEX idx_logs_time ON logs(time_ms)");
                 // 兼容老表：尝试补列
                 tryExec(st, "ALTER TABLE logs ADD COLUMN uuid VARCHAR(36) NULL");
+                tryExec(st, "ALTER TABLE logs ADD COLUMN item VARCHAR(191) NULL");
+                tryExec(st, "CREATE INDEX idx_logs_item ON logs(item, time_ms)");
             }
+            CaseRepository.ensureSchema(st, dialect == Dialect.SQLITE);
         }
     }
 
-    private static void tryExec(Statement st, String sql) {
+    static void tryExec(Statement st, String sql) {
         try { st.execute(sql); } catch (SQLException ignored) { }
+    }
+
+    Connection connection() { return conn; }
+
+    // 案件等低频写操作：放到写线程串行执行并等待结果，避免与异步日志写入、补列事务交叉
+    <T> T writeSync(Callable<T> task) throws SQLException {
+        try {
+            return writer.submit(task).get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new SQLException("写入被中断", e);
+        } catch (ExecutionException e) {
+            if (e.getCause() instanceof SQLException se) throw se;
+            throw new SQLException(e.getCause());
+        }
     }
 
     public void insertAsync(LogEntry e) {
         writer.execute(() -> {
             try (PreparedStatement ps = conn.prepareStatement(
-                    "INSERT INTO logs(time_ms, dimension, x, y, z, player, uuid, action, target, data) VALUES (?,?,?,?,?,?,?,?,?,?)")) {
+                    "INSERT INTO logs(time_ms, dimension, x, y, z, player, uuid, action, target, data, item) VALUES (?,?,?,?,?,?,?,?,?,?,?)")) {
                 ps.setLong(1, e.timeMillis());
                 ps.setString(2, e.dimension());
                 ps.setInt(3, e.x());
@@ -137,11 +167,58 @@ public final class Database {
                 ps.setString(8, e.action());
                 ps.setString(9, e.target());
                 ps.setString(10, e.data());
+                ps.setString(11, ITEM_ACTIONS.contains(e.action()) ? ItemData.itemOf(e.data()) : null);
                 ps.executeUpdate();
             } catch (SQLException ex) {
                 LOGGER.error("写入日志失败", ex);
             }
         });
+    }
+
+    /**
+     * 旧版本的 put/take 记录没有 item 列：启动时在写线程中按 id 分批补齐（只会处理一次，之后查询直接走索引）
+     */
+    private void backfillItemColumn() {
+        String select = "SELECT id, data FROM logs WHERE item IS NULL AND action IN ('put','take') AND id > ? ORDER BY id LIMIT 1000";
+        long lastId = 0;
+        int total = 0;
+        try (PreparedStatement sel = conn.prepareStatement(select);
+             PreparedStatement upd = conn.prepareStatement("UPDATE logs SET item=? WHERE id=?")) {
+            while (true) {
+                int seen = 0;
+                int batched = 0;
+                sel.setLong(1, lastId);
+                try (ResultSet rs = sel.executeQuery()) {
+                    while (rs.next()) {
+                        seen++;
+                        lastId = rs.getLong(1);
+                        String item = ItemData.itemOf(rs.getString(2));
+                        if (item == null) continue; // 无法解析的旧数据跳过，id 游标保证不会死循环
+                        upd.setString(1, item);
+                        upd.setLong(2, lastId);
+                        upd.addBatch();
+                        batched++;
+                    }
+                }
+                if (seen == 0) break;
+                if (batched == 0) continue;
+
+                conn.setAutoCommit(false);
+                try {
+                    upd.executeBatch();
+                    conn.commit();
+                    total += batched;
+                } catch (SQLException ex) {
+                    conn.rollback();
+                    throw ex;
+                } finally {
+                    conn.setAutoCommit(true);
+                }
+            }
+            if (total > 0) LOGGER.info("[craftaudit] 已为 {} 条旧容器记录补齐 item 列", total);
+        } catch (SQLException e) {
+            LOGGER.warn("[craftaudit] 补齐 item 列失败（不影响新记录）", e);
+        }
     }
 
     public List<LogEntry> queryLogsAtPaged(String dimension, int x, int y, int z, String actionPattern, int page, int pageSize) {
@@ -423,6 +500,48 @@ public final class Database {
         }
         return 0;
     }
+    // 按物品查询（put/take/drop/transfer），可按玩家名或 UUID 过滤，时间倒序；limit 防止一次取出过多
+    public List<LogEntry> queryItemLogsSince(String itemId, long sinceMs, String playerNameOrNull, String uuidOrNull, int limit) {
+        List<LogEntry> result = new ArrayList<>();
+        boolean hasName = playerNameOrNull != null && !playerNameOrNull.isBlank();
+        boolean hasUuid = uuidOrNull != null && !uuidOrNull.isBlank();
+
+        StringBuilder sql = new StringBuilder(
+                "SELECT time_ms, dimension, x, y, z, player, uuid, action, target, data FROM logs WHERE item=? AND time_ms>=?");
+        if (hasName && hasUuid) sql.append(" AND (player=? OR uuid=?)");
+        else if (hasName) sql.append(" AND player=?");
+        else if (hasUuid) sql.append(" AND uuid=?");
+        sql.append(" ORDER BY time_ms DESC LIMIT ?");
+
+        try (PreparedStatement ps = conn.prepareStatement(sql.toString())) {
+            int idx = 1;
+            ps.setString(idx++, itemId);
+            ps.setLong(idx++, sinceMs);
+            if (hasName) ps.setString(idx++, playerNameOrNull);
+            if (hasUuid) ps.setString(idx++, uuidOrNull);
+            ps.setInt(idx, limit);
+            try (ResultSet rs = ps.executeQuery()) {
+                while (rs.next()) {
+                    result.add(new LogEntry(
+                            rs.getLong("time_ms"),
+                            rs.getString("dimension"),
+                            rs.getInt("x"),
+                            rs.getInt("y"),
+                            rs.getInt("z"),
+                            rs.getString("player"),
+                            rs.getString("uuid"),
+                            rs.getString("action"),
+                            rs.getString("target"),
+                            rs.getString("data")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            LOGGER.error("按物品查询日志失败", e);
+        }
+        return result;
+    }
+
     // Database.java 中添加（或恢复）：
     public int deleteLogsBefore(long beforeMs) {
         String sql = "DELETE FROM logs WHERE time_ms < ?";
